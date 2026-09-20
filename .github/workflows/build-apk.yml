@@ -14,78 +14,78 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Extract Android project
         run: |
-          unzip -q "connect-chat-v11-github-upload-ready-fixed.zip" -d /tmp/cc
+          unzip -q "connect-chat-v11-github-upload-ready-fixed.zip" -d /tmp/connect-chat
           rm -rf android
-          cp -r /tmp/cc/android .
+          cp -r /tmp/connect-chat/android .
 
-      - name: Add WebView dependency
+      - name: Add AndroidX WebView dependency
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android/app/build.gradle")
-          s = p.read_text()
+          path = Path("android/app/build.gradle")
+          text = path.read_text()
 
           dependency = "implementation 'androidx.webkit:webkit:1.12.1'"
 
-          if dependency not in s:
-              if "dependencies {" in s:
-                  s = s.replace(
+          if dependency not in text:
+              if "dependencies {" in text:
+                  text = text.replace(
                       "dependencies {",
                       "dependencies {\n    " + dependency,
                       1
                   )
               else:
-                  s += (
+                  text += (
                       "\n\ndependencies {\n"
                       "    " + dependency + "\n"
                       "}\n"
                   )
 
-          p.write_text(s)
+          path.write_text(text)
           PY
 
-      - name: Fix Android permissions
+      - name: Fix Android manifest
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path(
+          path = Path(
               "android/app/src/main/AndroidManifest.xml"
           )
 
-          s = p.read_text()
+          text = path.read_text()
 
           permission = (
               '    <uses-permission '
-              'android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n'
+              'android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
           )
 
-          if "MODIFY_AUDIO_SETTINGS" not in s:
+          if "android.permission.MODIFY_AUDIO_SETTINGS" not in text:
               marker = (
                   '    <uses-permission '
                   'android:name="android.permission.RECORD_AUDIO" />'
               )
 
-              if marker in s:
-                  s = s.replace(
+              if marker in text:
+                  text = text.replace(
                       marker,
-                      marker + "\n" + permission
+                      marker + "\n" + permission,
+                      1
                   )
               else:
-                  s = s.replace(
+                  text = text.replace(
                       "<application",
                       permission + "\n    <application",
                       1
                   )
 
-          p.write_text(s)
+          path.write_text(text)
           PY
 
       - name: Create MainActivity
@@ -103,6 +103,7 @@ jobs:
           import android.net.Uri;
           import android.os.Bundle;
           import android.webkit.PermissionRequest;
+          import android.webkit.ValueCallback;
           import android.webkit.WebChromeClient;
           import android.webkit.WebResourceRequest;
           import android.webkit.WebResourceResponse;
@@ -116,220 +117,217 @@ jobs:
 
           public class MainActivity extends Activity {
 
-              private WebView web;
+              private WebView webView;
               private WebViewAssetLoader assetLoader;
-              private android.webkit.ValueCallback<Uri[]> fileCallback;
+
+              private ValueCallback<Uri[]> fileCallback;
               private PermissionRequest pendingPermissionRequest;
 
-              private static final int FILE_PICKER = 2001;
-              private static final int MEDIA_PERMISSION = 2002;
+              private static final int FILE_PICKER_REQUEST = 1001;
+              private static final int MEDIA_PERMISSION_REQUEST = 1002;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
-                  try {
-                      assetLoader =
-                              new WebViewAssetLoader.Builder()
-                                      .addPathHandler(
-                                              "/assets/",
-                                              new WebViewAssetLoader
-                                                      .AssetsPathHandler(this)
-                                      )
-                                      .build();
+                  assetLoader =
+                          new WebViewAssetLoader.Builder()
+                                  .addPathHandler(
+                                          "/assets/",
+                                          new WebViewAssetLoader
+                                                  .AssetsPathHandler(this)
+                                  )
+                                  .build();
 
-                      web = new WebView(this);
+                  webView = new WebView(this);
 
-                      web.setBackgroundColor(
-                              Color.rgb(11, 11, 15)
-                      );
+                  webView.setBackgroundColor(
+                          Color.rgb(11, 11, 15)
+                  );
 
-                      setContentView(web);
+                  setContentView(webView);
 
-                      WebSettings settings = web.getSettings();
+                  WebSettings settings = webView.getSettings();
 
-                      settings.setJavaScriptEnabled(true);
-                      settings.setDomStorageEnabled(true);
-                      settings.setDatabaseEnabled(true);
-                      settings.setAllowFileAccess(false);
-                      settings.setAllowContentAccess(false);
-                      settings.setMediaPlaybackRequiresUserGesture(false);
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
+                  settings.setAllowFileAccess(false);
+                  settings.setAllowContentAccess(false);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
 
-                      web.setWebViewClient(new WebViewClient() {
+                  webView.setWebViewClient(
+                          new WebViewClient() {
 
-                          @Override
-                          public WebResourceResponse
-                          shouldInterceptRequest(
-                                  WebView view,
-                                  WebResourceRequest request) {
+                              @Override
+                              public WebResourceResponse
+                              shouldInterceptRequest(
+                                      WebView view,
+                                      WebResourceRequest request) {
 
-                              return assetLoader.shouldInterceptRequest(
-                                      request.getUrl()
-                              );
-                          }
-
-                          @Override
-                          public WebResourceResponse
-                          shouldInterceptRequest(
-                                  WebView view,
-                                  String url) {
-
-                              return assetLoader.shouldInterceptRequest(
-                                      Uri.parse(url)
-                              );
-                          }
-                      });
-
-                      web.setWebChromeClient(
-                              new WebChromeClient() {
-
-                                  @Override
-                                  public boolean onShowFileChooser(
-                                          WebView view,
-                                          android.webkit.ValueCallback<Uri[]> callback,
-                                          FileChooserParams params) {
-
-                                      fileCallback = callback;
-
-                                      Intent intent =
-                                              new Intent(
-                                                      Intent.ACTION_GET_CONTENT
-                                              );
-
-                                      intent.addCategory(
-                                              Intent.CATEGORY_OPENABLE
-                                      );
-
-                                      intent.setType("*/*");
-
-                                      intent.putExtra(
-                                              Intent.EXTRA_MIME_TYPES,
-                                              new String[]{
-                                                      "image/*",
-                                                      "video/*"
-                                              }
-                                      );
-
-                                      intent.putExtra(
-                                              Intent.EXTRA_ALLOW_MULTIPLE,
-                                              false
-                                      );
-
-                                      try {
-                                          startActivityForResult(
-                                                  Intent.createChooser(
-                                                          intent,
-                                                          "Select photo or video"
-                                                  ),
-                                                  FILE_PICKER
+                                  return assetLoader
+                                          .shouldInterceptRequest(
+                                                  request.getUrl()
                                           );
+                              }
 
-                                          return true;
+                              @Override
+                              public WebResourceResponse
+                              shouldInterceptRequest(
+                                      WebView view,
+                                      String url) {
 
-                                      } catch (Exception e) {
-                                          fileCallback = null;
-                                          return false;
-                                      }
+                                  return assetLoader
+                                          .shouldInterceptRequest(
+                                                  Uri.parse(url)
+                                          );
+                              }
+                          }
+                  );
+
+                  webView.setWebChromeClient(
+                          new WebChromeClient() {
+
+                              @Override
+                              public boolean onShowFileChooser(
+                                      WebView webView,
+                                      ValueCallback<Uri[]> callback,
+                                      FileChooserParams params) {
+
+                                  if (fileCallback != null) {
+                                      fileCallback.onReceiveValue(null);
                                   }
 
-                                  @Override
-                                  public void onPermissionRequest(
-                                          final PermissionRequest request) {
+                                  fileCallback = callback;
 
-                                      runOnUiThread(() -> {
+                                  Intent intent =
+                                          new Intent(
+                                                  Intent.ACTION_OPEN_DOCUMENT
+                                          );
 
-                                          boolean needCamera = false;
-                                          boolean needMicrophone = false;
+                                  intent.addCategory(
+                                          Intent.CATEGORY_OPENABLE
+                                  );
 
-                                          for (String resource :
-                                                  request.getResources()) {
+                                  intent.setType("*/*");
 
-                                              if (PermissionRequest
-                                                      .RESOURCE_VIDEO_CAPTURE
-                                                      .equals(resource)) {
-                                                  needCamera = true;
-                                              }
-
-                                              if (PermissionRequest
-                                                      .RESOURCE_AUDIO_CAPTURE
-                                                      .equals(resource)) {
-                                                  needMicrophone = true;
-                                              }
+                                  intent.putExtra(
+                                          Intent.EXTRA_MIME_TYPES,
+                                          new String[]{
+                                                  "image/*",
+                                                  "video/*"
                                           }
+                                  );
 
-                                          ArrayList<String> permissions =
-                                                  new ArrayList<>();
+                                  intent.putExtra(
+                                          Intent.EXTRA_ALLOW_MULTIPLE,
+                                          false
+                                  );
 
-                                          if (needCamera &&
-                                                  checkSelfPermission(
+                                  try {
+                                      startActivityForResult(
+                                              Intent.createChooser(
+                                                      intent,
+                                                      "Select photo or video"
+                                              ),
+                                              FILE_PICKER_REQUEST
+                                      );
+
+                                      return true;
+
+                                  } catch (Exception error) {
+                                      fileCallback = null;
+                                      return false;
+                                  }
+                              }
+
+                              @Override
+                              public void onPermissionRequest(
+                                      final PermissionRequest request) {
+
+                                  runOnUiThread(
+                                          () -> {
+
+                                              boolean needsCamera = false;
+                                              boolean needsMicrophone = false;
+
+                                              for (
+                                                      String resource :
+                                                      request.getResources()
+                                              ) {
+
+                                                  if (
+                                                          PermissionRequest
+                                                                  .RESOURCE_VIDEO_CAPTURE
+                                                                  .equals(resource)
+                                                  ) {
+                                                      needsCamera = true;
+                                                  }
+
+                                                  if (
+                                                          PermissionRequest
+                                                                  .RESOURCE_AUDIO_CAPTURE
+                                                                  .equals(resource)
+                                                  ) {
+                                                      needsMicrophone = true;
+                                                  }
+                                              }
+
+                                              ArrayList<String>
+                                                      permissions =
+                                                      new ArrayList<>();
+
+                                              if (
+                                                      needsCamera &&
+                                                      checkSelfPermission(
+                                                              Manifest.permission.CAMERA
+                                                      ) != PackageManager.PERMISSION_GRANTED
+                                              ) {
+                                                  permissions.add(
                                                           Manifest.permission.CAMERA
-                                                  ) != PackageManager.PERMISSION_GRANTED) {
+                                                  );
+                                              }
 
-                                              permissions.add(
-                                                      Manifest.permission.CAMERA
-                                              );
-                                          }
-
-                                          if (needMicrophone &&
-                                                  checkSelfPermission(
+                                              if (
+                                                      needsMicrophone &&
+                                                      checkSelfPermission(
+                                                              Manifest.permission.RECORD_AUDIO
+                                                      ) != PackageManager.PERMISSION_GRANTED
+                                              ) {
+                                                  permissions.add(
                                                           Manifest.permission.RECORD_AUDIO
-                                                  ) != PackageManager.PERMISSION_GRANTED) {
+                                                  );
+                                              }
 
-                                              permissions.add(
-                                                      Manifest.permission.RECORD_AUDIO
+                                              if (!permissions.isEmpty()) {
+
+                                                  pendingPermissionRequest =
+                                                          request;
+
+                                                  requestPermissions(
+                                                          permissions.toArray(
+                                                                  new String[0]
+                                                          ),
+                                                          MEDIA_PERMISSION_REQUEST
+                                                  );
+
+                                                  return;
+                                              }
+
+                                              request.grant(
+                                                      request.getResources()
                                               );
                                           }
+                                  );
+                              }
+                          }
+                  );
 
-                                          if (!permissions.isEmpty()) {
-
-                                              pendingPermissionRequest =
-                                                      request;
-
-                                              requestPermissions(
-                                                      permissions.toArray(
-                                                              new String[0]
-                                                      ),
-                                                      MEDIA_PERMISSION
-                                              );
-
-                                              return;
-                                          }
-
-                                          request.grant(
-                                                  request.getResources()
-                                          );
-                                      });
-                                  }
-                              });
-
-                      web.loadUrl(
-                              "https://appassets.androidplatform.net/assets/www/index.html"
-                      );
-
-                  } catch (Throwable e) {
-
-                      android.widget.TextView error =
-                              new android.widget.TextView(this);
-
-                      error.setText(
-                              "Connect Chat could not start.\n\n"
-                                      + e.getClass().getSimpleName()
-                                      + ": "
-                                      + String.valueOf(e.getMessage())
-                      );
-
-                      error.setTextColor(Color.WHITE);
-                      error.setTextSize(16);
-                      error.setPadding(32, 64, 32, 32);
-                      error.setBackgroundColor(
-                              Color.rgb(11, 11, 15)
-                      );
-
-                      setContentView(error);
-                  }
+                  webView.loadUrl(
+                          "https://appassets.androidplatform.net/assets/www/index.html"
+                  );
               }
-
-              @Override
+                            @Override
               protected void onActivityResult(
                       int requestCode,
                       int resultCode,
@@ -341,8 +339,11 @@ jobs:
                           data
                   );
 
-                  if (requestCode != FILE_PICKER ||
-                          fileCallback == null) {
+                  if (requestCode != FILE_PICKER_REQUEST) {
+                      return;
+                  }
+
+                  if (fileCallback == null) {
                       return;
                   }
 
@@ -350,8 +351,10 @@ jobs:
 
                   if (resultCode == RESULT_OK && data != null) {
 
-                      if (data.getClipData() != null &&
-                              data.getClipData().getItemCount() > 0) {
+                      if (
+                              data.getClipData() != null &&
+                              data.getClipData().getItemCount() > 0
+                      ) {
 
                           results = new Uri[]{
                                   data.getClipData()
@@ -369,7 +372,9 @@ jobs:
 
                   fileCallback.onReceiveValue(results);
                   fileCallback = null;
-              }              @Override
+              }
+
+              @Override
               public void onRequestPermissionsResult(
                       int requestCode,
                       String[] permissions,
@@ -381,11 +386,10 @@ jobs:
                           grantResults
                   );
 
-                  if (requestCode != MEDIA_PERMISSION) {
-                      return;
-                  }
-
-                  if (pendingPermissionRequest == null) {
+                  if (
+                          requestCode != MEDIA_PERMISSION_REQUEST ||
+                          pendingPermissionRequest == null
+                  ) {
                       return;
                   }
 
@@ -393,7 +397,9 @@ jobs:
 
                   for (int result : grantResults) {
 
-                      if (result != PackageManager.PERMISSION_GRANTED) {
+                      if (
+                              result != PackageManager.PERMISSION_GRANTED
+                      ) {
                           granted = false;
                           break;
                       }
@@ -416,8 +422,11 @@ jobs:
               @Override
               public void onBackPressed() {
 
-                  if (web != null && web.canGoBack()) {
-                      web.goBack();
+                  if (
+                          webView != null &&
+                          webView.canGoBack()
+                  ) {
+                      webView.goBack();
                   } else {
                       super.onBackPressed();
                   }
@@ -426,10 +435,10 @@ jobs:
               @Override
               protected void onDestroy() {
 
-                  if (web != null) {
-                      web.stopLoading();
-                      web.destroy();
-                      web = null;
+                  if (webView != null) {
+                      webView.stopLoading();
+                      webView.destroy();
+                      webView = null;
                   }
 
                   super.onDestroy();
@@ -442,29 +451,31 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path(
+          path = Path(
               "android/app/src/main/res/values/themes.xml"
           )
 
-          s = p.read_text()
+          text = path.read_text()
 
-          if 'name="Theme.ConnectChat"' not in s:
-              s = s.replace(
+          if 'name="Theme.ConnectChat"' not in text:
+              text = text.replace(
                   "</resources>",
-                  '    <style name="Theme.ConnectChat" parent="AppTheme" />\n</resources>'
+                  '    <style name="Theme.ConnectChat" parent="AppTheme" />\n</resources>',
+                  1
               )
-              p.write_text(s)
+              path.write_text(text)
+          PY
 
-      - name: Patch app.js media handling
+      - name: Patch media handling
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path(
+          path = Path(
               "android/app/src/main/assets/www/app.js"
           )
 
-          s = p.read_text()
+          text = path.read_text()
 
           old = """async function getMedia(type){
           return navigator.mediaDevices.getUserMedia({
@@ -494,13 +505,12 @@ jobs:
           });
           }"""
 
-          if old in s:
-              s = s.replace(old, new, 1)
+          if old in text:
+              text = text.replace(old, new, 1)
 
-          p.write_text(s)
+          path.write_text(text)
           PY
-
-      - name: Setup Java
+                - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -508,7 +518,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-              - name: Install Android SDK
+
+      - name: Install Android SDK
         run: |
           sdkmanager \
             "platform-tools" \
@@ -528,6 +539,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: connect-chat-v11-fixed-apk
+          name: connect-chat-fixed-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
