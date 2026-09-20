@@ -14,7 +14,7 @@ jobs:
 
       - name: Extract Android project
         run: |
-          unzip -q "connect-chat-v11-github-upload-ready.zip" -d /tmp/cc
+          unzip -q "connect-chat-v11-github-upload-ready-fixed.zip" -d /tmp/cc
           rm -rf android
           cp -r /tmp/cc/android .
 
