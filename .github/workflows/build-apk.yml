@@ -52,27 +52,6 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
-      - name: Test APK and capture crash
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: Pixel_2
-          script: |
-            adb install android/app/build/outputs/apk/debug/app-debug.apk
-            adb logcat -c
-            adb shell monkey -p com.connectchat.app 1
-            sleep 10
-            adb logcat -d > crash-log.txt
-            echo "===== CONNECT CHAT CRASH LOG ====="
-            grep -i -E "FATAL EXCEPTION|AndroidRuntime|com.connectchat.app" crash-log.txt || true
-
-      - name: Upload crash log
-        uses: actions/upload-artifact@v4
-        with:
-          name: connect-chat-crash-log
-          path: crash-log.txt
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
