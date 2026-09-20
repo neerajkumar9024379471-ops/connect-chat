@@ -18,6 +18,22 @@ jobs:
           rm -rf android
           cp -r /tmp/cc/android .
 
+      - name: Fix Connect Chat theme
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/src/main/res/values/themes.xml")
+          s = p.read_text()
+
+          if 'name="Theme.ConnectChat"' not in s:
+              s = s.replace(
+                  '</resources>',
+                  '    <style name="Theme.ConnectChat" parent="AppTheme" />\n</resources>'
+              )
+              p.write_text(s)
+          PY
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
