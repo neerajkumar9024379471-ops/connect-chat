@@ -510,7 +510,7 @@ jobs:
 
           path.write_text(text)
           PY
-                - name: Setup Java
+      - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
