@@ -18,19 +18,11 @@ jobs:
           rm -rf android
           cp -r /tmp/cc/android .
 
-      - name: Fix Connect Chat MainActivity
+      - name: Create MainActivity
         run: |
-          FILE=$(find android -name MainActivity.java | head -1)
+          mkdir -p android/app/src/main/java/com/connectchat/app
 
-          if [ -z "$FILE" ]; then
-            echo "MainActivity.java not found"
-            find android -type f | head -100
-            exit 1
-          fi
-
-          echo "Found: $FILE"
-
-          cat > "$FILE" <<'JAVA'
+          cat > android/app/src/main/java/com/connectchat/app/MainActivity.java <<'JAVA'
           package com.connectchat.app;
 
           import android.app.Activity;
@@ -54,26 +46,26 @@ jobs:
                       web.setBackgroundColor(Color.rgb(11, 11, 15));
                       setContentView(web);
 
-                      WebSettings s = web.getSettings();
-                      s.setJavaScriptEnabled(true);
-                      s.setDomStorageEnabled(true);
-                      s.setAllowFileAccess(true);
-                      s.setAllowContentAccess(true);
-                      s.setMediaPlaybackRequiresUserGesture(false);
+                      WebSettings settings = web.getSettings();
+                      settings.setJavaScriptEnabled(true);
+                      settings.setDomStorageEnabled(true);
+                      settings.setAllowFileAccess(true);
+                      settings.setAllowContentAccess(true);
+                      settings.setMediaPlaybackRequiresUserGesture(false);
 
                       web.setWebViewClient(new WebViewClient());
                       web.setWebChromeClient(new WebChromeClient());
 
                       web.loadUrl("file:///android_asset/www/index.html");
 
-                  } catch (Throwable t) {
+                  } catch (Throwable e) {
                       android.widget.TextView error =
                               new android.widget.TextView(this);
 
                       error.setText(
                               "Connect Chat could not start.\n\n" +
-                              t.getClass().getSimpleName() +
-                              ": " + String.valueOf(t.getMessage())
+                              e.getClass().getSimpleName() +
+                              ": " + String.valueOf(e.getMessage())
                       );
 
                       error.setTextColor(Color.WHITE);
