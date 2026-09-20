@@ -3,7 +3,8 @@ name: Build Connect Chat APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -23,7 +24,7 @@ jobs:
           rm -rf android
           cp -r /tmp/cc/android .
 
-      - name: Add AndroidX WebView
+      - name: Add WebView dependency
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -31,17 +32,21 @@ jobs:
           p = Path("android/app/build.gradle")
           s = p.read_text()
 
-          dep = "implementation 'androidx.webkit:webkit:1.12.1'"
+          dependency = "implementation 'androidx.webkit:webkit:1.12.1'"
 
-          if dep not in s:
+          if dependency not in s:
               if "dependencies {" in s:
                   s = s.replace(
                       "dependencies {",
-                      "dependencies {\n    " + dep,
+                      "dependencies {\n    " + dependency,
                       1
                   )
               else:
-                  s += "\n\ndependencies {\n    " + dep + "\n}\n"
+                  s += (
+                      "\n\ndependencies {\n"
+                      "    " + dependency + "\n"
+                      "}\n"
+                  )
 
           p.write_text(s)
           PY
@@ -51,7 +56,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android/app/src/main/AndroidManifest.xml")
+          p = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
+
           s = p.read_text()
 
           permission = (
@@ -59,12 +67,23 @@ jobs:
               'android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n'
           )
 
-          if "android.permission.MODIFY_AUDIO_SETTINGS" not in s:
-              s = s.replace(
-                  '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
-                  '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
-                  + permission
+          if "MODIFY_AUDIO_SETTINGS" not in s:
+              marker = (
+                  '    <uses-permission '
+                  'android:name="android.permission.RECORD_AUDIO" />'
               )
+
+              if marker in s:
+                  s = s.replace(
+                      marker,
+                      marker + "\n" + permission
+                  )
+              else:
+                  s = s.replace(
+                      "<application",
+                      permission + "\n    <application",
+                      1
+                  )
 
           p.write_text(s)
           PY
@@ -99,7 +118,6 @@ jobs:
 
               private WebView web;
               private WebViewAssetLoader assetLoader;
-
               private android.webkit.ValueCallback<Uri[]> fileCallback;
               private PermissionRequest pendingPermissionRequest;
 
@@ -111,7 +129,6 @@ jobs:
                   super.onCreate(savedInstanceState);
 
                   try {
-
                       assetLoader =
                               new WebViewAssetLoader.Builder()
                                       .addPathHandler(
@@ -134,16 +151,15 @@ jobs:
                       settings.setJavaScriptEnabled(true);
                       settings.setDomStorageEnabled(true);
                       settings.setDatabaseEnabled(true);
-
                       settings.setAllowFileAccess(false);
                       settings.setAllowContentAccess(false);
-
                       settings.setMediaPlaybackRequiresUserGesture(false);
 
                       web.setWebViewClient(new WebViewClient() {
 
                           @Override
-                          public WebResourceResponse shouldInterceptRequest(
+                          public WebResourceResponse
+                          shouldInterceptRequest(
                                   WebView view,
                                   WebResourceRequest request) {
 
@@ -153,7 +169,8 @@ jobs:
                           }
 
                           @Override
-                          public WebResourceResponse shouldInterceptRequest(
+                          public WebResourceResponse
+                          shouldInterceptRequest(
                                   WebView view,
                                   String url) {
 
@@ -163,132 +180,127 @@ jobs:
                           }
                       });
 
-                      web.setWebChromeClient(new WebChromeClient() {
+                      web.setWebChromeClient(
+                              new WebChromeClient() {
 
-                          @Override
-                          public boolean onShowFileChooser(
-                                  WebView view,
-                                  android.webkit.ValueCallback<Uri[]> callback,
-                                  FileChooserParams params) {
+                                  @Override
+                                  public boolean onShowFileChooser(
+                                          WebView view,
+                                          android.webkit.ValueCallback<Uri[]> callback,
+                                          FileChooserParams params) {
 
-                              fileCallback = callback;
+                                      fileCallback = callback;
 
-                              Intent intent =
-                                      new Intent(
-                                              Intent.ACTION_GET_CONTENT
+                                      Intent intent =
+                                              new Intent(
+                                                      Intent.ACTION_GET_CONTENT
+                                              );
+
+                                      intent.addCategory(
+                                              Intent.CATEGORY_OPENABLE
                                       );
 
-                              intent.addCategory(
-                                      Intent.CATEGORY_OPENABLE
-                              );
+                                      intent.setType("*/*");
 
-                              intent.setType("*/*");
+                                      intent.putExtra(
+                                              Intent.EXTRA_MIME_TYPES,
+                                              new String[]{
+                                                      "image/*",
+                                                      "video/*"
+                                              }
+                                      );
 
-                              intent.putExtra(
-                                      Intent.EXTRA_MIME_TYPES,
-                                      new String[]{
-                                              "image/*",
-                                              "video/*"
-                                      }
-                              );
+                                      intent.putExtra(
+                                              Intent.EXTRA_ALLOW_MULTIPLE,
+                                              false
+                                      );
 
-                              intent.putExtra(
-                                      Intent.EXTRA_ALLOW_MULTIPLE,
-                                      false
-                              );
-
-                              try {
-
-                                  Intent chooser =
-                                          Intent.createChooser(
-                                                  intent,
-                                                  "Select photo or video"
+                                      try {
+                                          startActivityForResult(
+                                                  Intent.createChooser(
+                                                          intent,
+                                                          "Select photo or video"
+                                                  ),
+                                                  FILE_PICKER
                                           );
 
-                                  startActivityForResult(
-                                          chooser,
-                                          FILE_PICKER
-                                  );
+                                          return true;
 
-                                  return true;
-
-                              } catch (Exception e) {
-
-                                  fileCallback = null;
-                                  return false;
-                              }
-                          }
-
-                          @Override
-                          public void onPermissionRequest(
-                                  final PermissionRequest request) {
-
-                              runOnUiThread(() -> {
-
-                                  boolean needCamera = false;
-                                  boolean needMicrophone = false;
-
-                                  for (String resource :
-                                          request.getResources()) {
-
-                                      if (PermissionRequest
-                                              .RESOURCE_VIDEO_CAPTURE
-                                              .equals(resource)) {
-
-                                          needCamera = true;
-                                      }
-
-                                      if (PermissionRequest
-                                              .RESOURCE_AUDIO_CAPTURE
-                                              .equals(resource)) {
-
-                                          needMicrophone = true;
+                                      } catch (Exception e) {
+                                          fileCallback = null;
+                                          return false;
                                       }
                                   }
 
-                                  ArrayList<String> permissions =
-                                          new ArrayList<>();
+                                  @Override
+                                  public void onPermissionRequest(
+                                          final PermissionRequest request) {
 
-                                  if (needCamera &&
-                                          checkSelfPermission(
-                                                  Manifest.permission.CAMERA
-                                          ) != PackageManager.PERMISSION_GRANTED) {
+                                      runOnUiThread(() -> {
 
-                                      permissions.add(
-                                              Manifest.permission.CAMERA
-                                      );
+                                          boolean needCamera = false;
+                                          boolean needMicrophone = false;
+
+                                          for (String resource :
+                                                  request.getResources()) {
+
+                                              if (PermissionRequest
+                                                      .RESOURCE_VIDEO_CAPTURE
+                                                      .equals(resource)) {
+                                                  needCamera = true;
+                                              }
+
+                                              if (PermissionRequest
+                                                      .RESOURCE_AUDIO_CAPTURE
+                                                      .equals(resource)) {
+                                                  needMicrophone = true;
+                                              }
+                                          }
+
+                                          ArrayList<String> permissions =
+                                                  new ArrayList<>();
+
+                                          if (needCamera &&
+                                                  checkSelfPermission(
+                                                          Manifest.permission.CAMERA
+                                                  ) != PackageManager.PERMISSION_GRANTED) {
+
+                                              permissions.add(
+                                                      Manifest.permission.CAMERA
+                                              );
+                                          }
+
+                                          if (needMicrophone &&
+                                                  checkSelfPermission(
+                                                          Manifest.permission.RECORD_AUDIO
+                                                  ) != PackageManager.PERMISSION_GRANTED) {
+
+                                              permissions.add(
+                                                      Manifest.permission.RECORD_AUDIO
+                                              );
+                                          }
+
+                                          if (!permissions.isEmpty()) {
+
+                                              pendingPermissionRequest =
+                                                      request;
+
+                                              requestPermissions(
+                                                      permissions.toArray(
+                                                              new String[0]
+                                                      ),
+                                                      MEDIA_PERMISSION
+                                              );
+
+                                              return;
+                                          }
+
+                                          request.grant(
+                                                  request.getResources()
+                                          );
+                                      });
                                   }
-
-                                  if (needMicrophone &&
-                                          checkSelfPermission(
-                                                  Manifest.permission.RECORD_AUDIO
-                                          ) != PackageManager.PERMISSION_GRANTED) {
-
-                                      permissions.add(
-                                              Manifest.permission.RECORD_AUDIO
-                                      );
-                                  }
-
-                                  if (!permissions.isEmpty()) {
-
-                                      pendingPermissionRequest = request;
-
-                                      requestPermissions(
-                                              permissions.toArray(
-                                                      new String[0]
-                                              ),
-                                              MEDIA_PERMISSION
-                                      );
-
-                                      return;
-                                  }
-
-                                  request.grant(
-                                          request.getResources()
-                                  );
                               });
-                          }
-                      });
 
                       web.loadUrl(
                               "https://appassets.androidplatform.net/assets/www/index.html"
@@ -308,14 +320,7 @@ jobs:
 
                       error.setTextColor(Color.WHITE);
                       error.setTextSize(16);
-
-                      error.setPadding(
-                              32,
-                              64,
-                              32,
-                              32
-                      );
-
+                      error.setPadding(32, 64, 32, 32);
                       error.setBackgroundColor(
                               Color.rgb(11, 11, 15)
                       );
@@ -336,29 +341,23 @@ jobs:
                           data
                   );
 
-                  if (requestCode != FILE_PICKER) {
-                      return;
-                  }
-
-                  if (fileCallback == null) {
+                  if (requestCode != FILE_PICKER ||
+                          fileCallback == null) {
                       return;
                   }
 
                   Uri[] results = null;
 
-                  if (resultCode == RESULT_OK &&
-                          data != null) {
+                  if (resultCode == RESULT_OK && data != null) {
 
-                      if (data.getClipData() != null) {
+                      if (data.getClipData() != null &&
+                              data.getClipData().getItemCount() > 0) {
 
-                          if (data.getClipData().getItemCount() > 0) {
-
-                              results = new Uri[]{
-                                      data.getClipData()
-                                              .getItemAt(0)
-                                              .getUri()
-                              };
-                          }
+                          results = new Uri[]{
+                                  data.getClipData()
+                                          .getItemAt(0)
+                                          .getUri()
+                          };
 
                       } else if (data.getData() != null) {
 
@@ -369,10 +368,8 @@ jobs:
                   }
 
                   fileCallback.onReceiveValue(results);
-
                   fileCallback = null;
-              }
-                            @Override
+              }              @Override
               public void onRequestPermissionsResult(
                       int requestCode,
                       String[] permissions,
@@ -420,11 +417,8 @@ jobs:
               public void onBackPressed() {
 
                   if (web != null && web.canGoBack()) {
-
                       web.goBack();
-
                   } else {
-
                       super.onBackPressed();
                   }
               }
@@ -433,7 +427,6 @@ jobs:
               protected void onDestroy() {
 
                   if (web != null) {
-
                       web.stopLoading();
                       web.destroy();
                       web = null;
@@ -444,216 +437,7 @@ jobs:
           }
           JAVA
 
-      - name: Fix V11 media handling
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path(
-              "android/app/src/main/assets/www/app.js"
-          )
-
-          s = p.read_text()
-
-          old = """async function getMedia(type){if(localStream)return localStream;localStream=await navigator.mediaDevices.getUserMedia({video:type==='video'?{facingMode:'user',width:{ideal:1280},height:{ideal:720}}:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});$('localVideo').srcObject=localStream;await $('localVideo').play().catch(()=>{});return localStream}"""
-
-          new = """async function getMedia(type){
-          if(localStream)return localStream;
-
-          if(!navigator.mediaDevices ||
-             !navigator.mediaDevices.getUserMedia){
-
-            throw Error(
-              'Camera and microphone are not available.'
-            );
-          }
-
-          try{
-
-            const stream =
-              await navigator.mediaDevices.getUserMedia({
-
-                video:type==='video'
-                  ? {
-                      facingMode:'user',
-                      width:{ideal:1280},
-                      height:{ideal:720}
-                    }
-                  : false,
-
-                audio:{
-                  echoCancellation:true,
-                  noiseSuppression:true,
-                  autoGainControl:true
-                }
-              });
-
-            if(!stream.getAudioTracks().length){
-
-              throw Error(
-                'Microphone audio track could not be created.'
-              );
-            }
-
-            if(type==='video' &&
-               !stream.getVideoTracks().length){
-
-              throw Error(
-                'Camera video track could not be created.'
-              );
-            }
-
-            localStream=stream;
-
-            $('localVideo').srcObject=localStream;
-
-            await $('localVideo').play().catch(()=>{});
-
-            return localStream;
-
-          }catch(e){
-
-            if(localStream){
-
-              localStream.getTracks().forEach(
-                t=>t.stop()
-              );
-            }
-
-            localStream=null;
-
-            throw e;
-          }
-          }"""
-
-          if old in s:
-
-              s=s.replace(
-                old,
-                new,
-                1
-              )
-
-              print("getMedia fixed.")
-
-          else:
-
-              print(
-                "getMedia pattern not found."
-              )
-
-          # Disable the old voice-message recorder
-          # that was causing the automatic microphone
-          # popup/error from the bottom microphone button.
-
-          start=s.find(
-              "async function startVoiceMessage()"
-          )
-
-          end=s.find(
-              "\nfunction renderAudioMessages()",
-              start
-          )
-
-          if start != -1 and end != -1:
-
-              replacement = """async function startVoiceMessage(){
-
-          if(!current && !currentGroup){
-            return;
-          }
-
-          if(!navigator.mediaDevices ||
-             !navigator.mediaDevices.getUserMedia){
-
-            alert(
-              'Microphone is not available in this app.'
-            );
-
-            return;
-          }
-
-          try{
-
-            const stream =
-              await navigator.mediaDevices.getUserMedia({
-                audio:{
-                  echoCancellation:true,
-                  noiseSuppression:true,
-                  autoGainControl:true
-                }
-              });
-
-            const mime =
-              [
-                'audio/webm;codecs=opus',
-                'audio/webm'
-              ].find(
-                x=>MediaRecorder.isTypeSupported(x)
-              ) || '';
-
-            voiceChunks=[];
-
-            voiceRecorder =
-              mime
-                ? new MediaRecorder(
-                    stream,
-                    {mimeType:mime}
-                  )
-                : new MediaRecorder(stream);
-
-            $('voiceBtn').textContent='⏹';
-
-            voiceRecorder.ondataavailable=e=>{
-
-              if(e.data && e.data.size){
-                voiceChunks.push(e.data);
-              }
-            };
-
-            voiceRecorder.onstop=async()=>{
-
-              stream.getTracks().forEach(
-                t=>t.stop()
-              );
-
-              $('voiceBtn').textContent='🎤';
-
-              voiceRecorder=null;
-              voiceChunks=[];
-            };
-
-            voiceRecorder.start(500);
-
-          }catch(e){
-
-            console.error(
-              'Microphone error:',
-              e
-            );
-
-            alert(
-              'Microphone permission is required.'
-            );
-
-            voiceRecorder=null;
-            voiceChunks=[];
-          }
-          }"""
-
-              s=(
-                s[:start] +
-                replacement +
-                s[end:]
-              )
-
-              print(
-                "Voice-message handling fixed."
-              )
-
-          p.write_text(s)
-          PY
-                - name: Fix Connect Chat theme
+      - name: Fix Connect Chat theme
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -665,13 +449,55 @@ jobs:
           s = p.read_text()
 
           if 'name="Theme.ConnectChat"' not in s:
-
               s = s.replace(
-                  '</resources>',
+                  "</resources>",
                   '    <style name="Theme.ConnectChat" parent="AppTheme" />\n</resources>'
               )
-
               p.write_text(s)
+
+      - name: Patch app.js media handling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path(
+              "android/app/src/main/assets/www/app.js"
+          )
+
+          s = p.read_text()
+
+          old = """async function getMedia(type){
+          return navigator.mediaDevices.getUserMedia({
+            video:type==='video'?{facingMode:'user',width:{ideal:1280},height:{ideal:720}}:false,
+            audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+          });
+          }"""
+
+          new = """async function getMedia(type){
+          if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+            throw new Error('Media access is not supported on this device.');
+          }
+
+          const wantVideo = type === 'video';
+
+          return await navigator.mediaDevices.getUserMedia({
+            video: wantVideo ? {
+              facingMode:'user',
+              width:{ideal:1280},
+              height:{ideal:720}
+            } : false,
+            audio: {
+              echoCancellation:true,
+              noiseSuppression:true,
+              autoGainControl:true
+            }
+          });
+          }"""
+
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          p.write_text(s)
           PY
 
       - name: Setup Java
@@ -682,8 +508,7 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
+              - name: Install Android SDK
         run: |
           sdkmanager \
             "platform-tools" \
@@ -703,6 +528,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: connect-chat-v11-apk
+          name: connect-chat-v11-fixed-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
