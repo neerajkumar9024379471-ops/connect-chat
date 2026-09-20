@@ -18,6 +18,87 @@ jobs:
           rm -rf android
           cp -r /tmp/cc/android .
 
+      - name: Fix Connect Chat MainActivity
+        run: |
+          cat > android/app/src/main/java/com/connectchat/app/MainActivity.java <<'JAVA'
+          package com.connectchat.app;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.graphics.Color;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.webkit.CookieManager;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              @Override
+              protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+
+                  try {
+                      web = new WebView(this);
+                      web.setBackgroundColor(Color.rgb(11,11,15));
+                      setContentView(web);
+
+                      WebSettings s = web.getSettings();
+                      s.setJavaScriptEnabled(true);
+                      s.setDomStorageEnabled(true);
+                      s.setAllowFileAccess(true);
+                      s.setAllowContentAccess(true);
+                      s.setMediaPlaybackRequiresUserGesture(false);
+
+                      CookieManager.getInstance().setAcceptCookie(true);
+                      CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
+
+                      web.setWebViewClient(new WebViewClient());
+                      web.setWebChromeClient(new WebChromeClient());
+
+                      web.loadUrl("file:///android_asset/www/index.html");
+
+                  } catch (Throwable t) {
+                      android.widget.TextView error =
+                              new android.widget.TextView(this);
+
+                      error.setText(
+                              "Connect Chat could not start.\n\n" +
+                              t.getClass().getSimpleName() +
+                              ": " + String.valueOf(t.getMessage())
+                      );
+
+                      error.setTextColor(Color.WHITE);
+                      error.setTextSize(16);
+                      error.setPadding(32, 64, 32, 32);
+                      error.setBackgroundColor(Color.rgb(11,11,15));
+
+                      setContentView(error);
+                  }
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (web != null && web.canGoBack()) {
+                      web.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+
+              @Override
+              protected void onDestroy() {
+                  if (web != null) {
+                      web.stopLoading();
+                      web.destroy();
+                      web = null;
+                  }
+                  super.onDestroy();
+              }
+          }
+          JAVA
+
       - name: Fix Connect Chat theme
         run: |
           python3 - <<'PY'
