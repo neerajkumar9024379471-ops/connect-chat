@@ -20,7 +20,17 @@ jobs:
 
       - name: Fix Connect Chat MainActivity
         run: |
-          cat > android/app/src/main/java/com/connectchat/app/MainActivity.java <<'JAVA'
+          FILE=$(find android -name MainActivity.java | head -1)
+
+          if [ -z "$FILE" ]; then
+            echo "MainActivity.java not found"
+            find android -type f | head -100
+            exit 1
+          fi
+
+          echo "Found: $FILE"
+
+          cat > "$FILE" <<'JAVA'
           package com.connectchat.app;
 
           import android.app.Activity;
@@ -30,9 +40,9 @@ jobs:
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
-          import android.webkit.CookieManager;
 
           public class MainActivity extends Activity {
+
               private WebView web;
 
               @Override
@@ -41,7 +51,7 @@ jobs:
 
                   try {
                       web = new WebView(this);
-                      web.setBackgroundColor(Color.rgb(11,11,15));
+                      web.setBackgroundColor(Color.rgb(11, 11, 15));
                       setContentView(web);
 
                       WebSettings s = web.getSettings();
@@ -50,9 +60,6 @@ jobs:
                       s.setAllowFileAccess(true);
                       s.setAllowContentAccess(true);
                       s.setMediaPlaybackRequiresUserGesture(false);
-
-                      CookieManager.getInstance().setAcceptCookie(true);
-                      CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
                       web.setWebViewClient(new WebViewClient());
                       web.setWebChromeClient(new WebChromeClient());
@@ -72,7 +79,7 @@ jobs:
                       error.setTextColor(Color.WHITE);
                       error.setTextSize(16);
                       error.setPadding(32, 64, 32, 32);
-                      error.setBackgroundColor(Color.rgb(11,11,15));
+                      error.setBackgroundColor(Color.rgb(11, 11, 15));
 
                       setContentView(error);
                   }
@@ -94,6 +101,7 @@ jobs:
                       web.destroy();
                       web = null;
                   }
+
                   super.onDestroy();
               }
           }
@@ -138,3 +146,4 @@ jobs:
         with:
           name: connect-chat-v11-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
