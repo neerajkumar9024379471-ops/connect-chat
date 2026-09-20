@@ -18,6 +18,31 @@ jobs:
           rm -rf android
           cp -r /tmp/cc/android .
 
+      - name: Add WebView dependency
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+
+          dependency = "implementation 'androidx.webkit:webkit:1.12.1'"
+
+          if dependency not in s:
+              if "dependencies {" in s:
+                  s = s.replace(
+                      "dependencies {",
+                      "dependencies {\n    " + dependency,
+                      1
+                  )
+              else:
+                  s += "\n\ndependencies {\n    " + dependency + "\n}\n"
+
+              p.write_text(s)
+
+          print("WebView dependency configured.")
+          PY
+
       - name: Create MainActivity
         run: |
           mkdir -p android/app/src/main/java/com/connectchat/app
@@ -33,13 +58,22 @@ jobs:
           import android.os.Bundle;
           import android.webkit.PermissionRequest;
           import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebResourceResponse;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
 
+          import androidx.webkit.WebViewAssetLoader;
+
+          import java.io.IOException;
+          import java.util.ArrayList;
+
           public class MainActivity extends Activity {
 
               private WebView web;
+              private WebViewAssetLoader assetLoader;
+
               private android.webkit.ValueCallback<Uri[]> fileCallback;
               private PermissionRequest pendingRequest;
 
@@ -51,21 +85,48 @@ jobs:
                   super.onCreate(b);
 
                   try {
+                      assetLoader =
+                          new WebViewAssetLoader.Builder()
+                              .addPathHandler(
+                                  "/assets/",
+                                  new WebViewAssetLoader.AssetsPathHandler(this)
+                              )
+                              .build();
+
                       web = new WebView(this);
-                      web.setBackgroundColor(
-                          android.graphics.Color.rgb(11, 11, 15)
-                      );
+
                       setContentView(web);
 
                       WebSettings settings = web.getSettings();
 
                       settings.setJavaScriptEnabled(true);
                       settings.setDomStorageEnabled(true);
-                      settings.setAllowFileAccess(true);
-                      settings.setAllowContentAccess(true);
+                      settings.setAllowFileAccess(false);
+                      settings.setAllowContentAccess(false);
                       settings.setMediaPlaybackRequiresUserGesture(false);
 
-                      web.setWebViewClient(new WebViewClient());
+                      web.setWebViewClient(new WebViewClient() {
+
+                          @Override
+                          public WebResourceResponse shouldInterceptRequest(
+                                  WebView view,
+                                  WebResourceRequest request) {
+
+                              return assetLoader.shouldInterceptRequest(
+                                  request.getUrl()
+                              );
+                          }
+
+                          @Override
+                          public WebResourceResponse shouldInterceptRequest(
+                                  WebView view,
+                                  String url) {
+
+                              return assetLoader.shouldInterceptRequest(
+                                  Uri.parse(url)
+                              );
+                          }
+                      });
 
                       web.setWebChromeClient(new WebChromeClient() {
 
@@ -84,7 +145,19 @@ jobs:
                                   Intent.CATEGORY_OPENABLE
                               );
 
-                              intent.setType("image/*");
+                              String type = params.getAcceptTypes().length > 0
+                                      ? params.getAcceptTypes()[0]
+                                      : "image/*";
+
+                              if (type == null || type.trim().isEmpty()) {
+                                  type = "image/*";
+                              }
+
+                              if (type.contains(",")) {
+                                  type = "image/*";
+                              }
+
+                              intent.setType(type);
 
                               intent.putExtra(
                                   Intent.EXTRA_ALLOW_MULTIPLE,
@@ -108,32 +181,33 @@ jobs:
                           public void onPermissionRequest(
                                   final PermissionRequest request) {
 
-                              pendingRequest = request;
+                              runOnUiThread(() -> {
 
-                              boolean needCamera = false;
-                              boolean needMicrophone = false;
+                                  pendingRequest = request;
 
-                              for (String resource :
-                                      request.getResources()) {
+                                  boolean needCamera = false;
+                                  boolean needMicrophone = false;
 
-                                  if (PermissionRequest
-                                          .RESOURCE_VIDEO_CAPTURE
-                                          .equals(resource)) {
-                                      needCamera = true;
+                                  for (String resource :
+                                          request.getResources()) {
+
+                                      if (PermissionRequest
+                                              .RESOURCE_VIDEO_CAPTURE
+                                              .equals(resource)) {
+
+                                          needCamera = true;
+                                      }
+
+                                      if (PermissionRequest
+                                              .RESOURCE_AUDIO_CAPTURE
+                                              .equals(resource)) {
+
+                                          needMicrophone = true;
+                                      }
                                   }
 
-                                  if (PermissionRequest
-                                          .RESOURCE_AUDIO_CAPTURE
-                                          .equals(resource)) {
-                                      needMicrophone = true;
-                                  }
-                              }
-
-                              if (android.os.Build.VERSION.SDK_INT >= 23) {
-
-                                  java.util.ArrayList<String>
-                                      permissions =
-                                      new java.util.ArrayList<>();
+                                  ArrayList<String> permissions =
+                                      new ArrayList<>();
 
                                   if (needCamera &&
                                       checkSelfPermission(
@@ -166,16 +240,23 @@ jobs:
 
                                       return;
                                   }
-                              }
 
-                              request.grant(
-                                  request.getResources()
-                              );
+                                  request.grant(
+                                      request.getResources()
+                                  );
+                              });
                           }
                       });
 
+                      /*
+                       * IMPORTANT:
+                       * Do NOT use file:///android_asset here.
+                       *
+                       * appassets.androidplatform.net is a secure WebView
+                       * origin and supports getUserMedia/WebRTC much better.
+                       */
                       web.loadUrl(
-                          "file:///android_asset/www/index.html"
+                          "https://appassets.androidplatform.net/assets/www/index.html"
                       );
 
                   } catch (Throwable e) {
